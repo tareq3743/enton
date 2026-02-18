@@ -28,7 +28,7 @@ async def test_brain_loop():
         {"content": "O clima em São Paulo é ensolarado.", "tool_calls": []}
     ]
     
-    brain = Brain(settings)
+    brain = Brain(settings, toolkits=[])
     # Inject mock provider
     brain._providers[Provider.LOCAL] = mock_provider
     
