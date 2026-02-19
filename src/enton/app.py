@@ -6,8 +6,13 @@ import math
 import random
 import re
 import time
+import warnings
 from collections import deque
 from pathlib import Path
+
+# Silence PyTorch warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.modules.rnn")
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.nn.utils.weight_norm")
 
 # Core & Cognition
 from enton.action.voice import Voice
@@ -208,11 +213,13 @@ class App:
         from enton.skills.desktop_toolkit import DesktopTools
         from enton.skills.media_toolkit import MediaTools
         from enton.skills.network_toolkit import NetworkTools
+        from enton.skills.director_toolkit import DirectorTools
 
         toolkits = [
             describe_tools,
             self.github_learner,
             FaceTools(self.vision, self.vision.face_recognizer),
+            DirectorTools(self.vision),
             FileTools(shell_state),
             MemoryTools(self.memory),
             PlannerTools(self.planner),
@@ -604,25 +611,58 @@ class App:
 
         # Metacognitive-wrapped brain call
         trace = self.metacognition.begin_trace(event.text, strategy="agent")
-        response = await self.brain.think_agent(event.text, system=system)
-        provider = getattr(self.brain._agent.model, "id", "?")
-        self.metacognition.end_trace(
-            trace,
-            response or "",
-            provider=provider,
-            success=bool(response),
-        )
+        
+        full_response = ""
+        sentence_buffer = ""
+        # Delimiters: . ? ! : \n (lookbehind to keep delimiter)
+        # Using simple check for robustness
+        delimiters = (".", "?", "!", ":", "\n")
+        
+        try:
+            # STREAMING PIPELINE: Brain -> Buffer -> Voice
+            async for chunk in self.brain.think_stream(event.text, system=system):
+                if not chunk: continue
+                
+                sentence_buffer += chunk
+                full_response += chunk
+                
+                # Check for sentence end
+                if any(sentence_buffer.endswith(d) or sentence_buffer.endswith(d + " ") for d in delimiters):
+                    # Found a sentence boundary!
+                    to_say = sentence_buffer.strip()
+                    if len(to_say) > 2: # Ignore noise
+                        self._push_thought(f"[brain] {to_say[:60]}...")
+                        await self.voice.say(to_say)
+                    sentence_buffer = ""
+            
+            # Flush remaining buffer
+            if sentence_buffer.strip():
+                await self.voice.say(sentence_buffer.strip())
 
-        if response:
-            self._push_thought(f"[brain] {response[:100]}")
-            await self.voice.say(response)
-            self.memory.remember(
-                Episode(
-                    kind="conversation",
-                    summary=f"User: '{event.text[:60]}' -> Me: '{response[:60]}'",
-                    tags=["chat"],
-                )
+            provider = getattr(self.brain._agent.model, "id", "?")
+            self.metacognition.end_trace(
+                trace,
+                full_response or "",
+                provider=provider,
+                success=bool(full_response),
             )
+
+            if full_response:
+                self.memory.remember(
+                    Episode(
+                        kind="conversation",
+                        summary=f"User: '{event.text[:60]}' -> Me: '{full_response[:60]}'",
+                        tags=["chat"],
+                    )
+                )
+        except Exception:
+            logger.exception("Streaming interaction failed")
+            # Fallback to non-streaming if stream dies
+            try:
+                response = await self.brain.think_agent(event.text, system=system)
+                if response:
+                    await self.voice.say(response)
+            except: pass
 
     def _extract_facts(self, text: str) -> None:
         # Simple regex extraction for Phase 1

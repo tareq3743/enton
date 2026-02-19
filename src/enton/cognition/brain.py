@@ -81,85 +81,76 @@ class EntonBrain:
 
     @staticmethod
     def _init_models(s: Settings) -> list[Model]:
-        """Build ordered list of Agno models for fallback chain."""
+        """Build ordered list of Agno models respecting brain_provider preference."""
         models: list[Model] = []
+        logger.info("Initializing brain with provider preference: %s", s.brain_provider)
+        
+        # Helper to create provider instances
+        def create_provider(provider_type: str) -> list[Model]:
+            created = []
+            p_type = str(provider_type).lower()
+            
+            if p_type == "local":
+                created.append(Ollama(id=s.ollama_model))
+                
+            elif p_type == "nvidia":
+                keys = [k.strip() for k in s.nvidia_api_keys.split(",") if k.strip()]
+                if not keys and s.nvidia_api_key: keys = [s.nvidia_api_key]
+                if keys:
+                    try:
+                        from agno.models.nvidia import Nvidia
+                        for key in keys:
+                            created.append(Nvidia(id=s.nvidia_nim_model, api_key=key))
+                    except ImportError: pass
 
-        # 1. LOCAL (Ollama) — always primary
-        models.append(Ollama(id=s.ollama_model))
+            elif provider_type == "groq" and s.groq_api_key:
+                from agno.models.groq import Groq
+                created.append(Groq(id=s.groq_model, api_key=s.groq_api_key))
 
-        # 2. NVIDIA NIM — one instance per key (natural rate-limit fallback)
-        nvidia_keys = [k.strip() for k in s.nvidia_api_keys.split(",") if k.strip()]
-        if not nvidia_keys and s.nvidia_api_key:
-            nvidia_keys = [s.nvidia_api_key]
-        if nvidia_keys:
-            try:
-                from agno.models.nvidia import Nvidia
+            elif provider_type == "google" and s.google_project:
+                try:
+                    from agno.models.google import Gemini
+                    created.append(Gemini(id=s.google_brain_model))
+                except ImportError: pass
+                
+            elif provider_type == "openrouter" and s.openrouter_api_key:
+                try:
+                    from agno.models.openrouter import OpenRouter
+                    created.append(OpenRouter(id=s.openrouter_model, api_key=s.openrouter_api_key))
+                except ImportError: pass
 
-                for key in nvidia_keys:
-                    models.append(Nvidia(id=s.nvidia_nim_model, api_key=key))
-            except ImportError:
-                logger.debug("agno.models.nvidia not available")
-
-        # 3. HuggingFace Inference API
-        if s.huggingface_token:
-            from agno.models.openai.like import OpenAILike
-
-            models.append(
-                OpenAILike(
-                    id=s.huggingface_model,
-                    api_key=s.huggingface_token,
-                    base_url="https://api-inference.huggingface.co/v1",
-                )
-            )
-
-        # 4. Groq
-        if s.groq_api_key:
-            from agno.models.groq import Groq
-
-            models.append(Groq(id=s.groq_model, api_key=s.groq_api_key))
-
-        # 5. OpenRouter
-        if s.openrouter_api_key:
-            try:
-                from agno.models.openrouter import OpenRouter
-
-                models.append(
-                    OpenRouter(
-                        id=s.openrouter_model,
-                        api_key=s.openrouter_api_key,
-                    )
-                )
-            except ImportError:
+            elif provider_type == "huggingface" and s.huggingface_token:
                 from agno.models.openai.like import OpenAILike
-
-                models.append(
-                    OpenAILike(
-                        id=s.openrouter_model,
-                        api_key=s.openrouter_api_key,
-                        base_url="https://openrouter.ai/api/v1",
-                    )
-                )
-
-        # 6. AIML API
-        if s.aimlapi_api_key:
-            from agno.models.openai.like import OpenAILike
-
-            models.append(
-                OpenAILike(
+                created.append(OpenAILike(
+                    id=s.huggingface_model, 
+                    api_key=s.huggingface_token,
+                    base_url="https://api-inference.huggingface.co/v1"
+                ))
+                
+            elif provider_type == "aimlapi" and s.aimlapi_api_key:
+                from agno.models.openai.like import OpenAILike
+                created.append(OpenAILike(
                     id=s.aimlapi_model,
                     api_key=s.aimlapi_api_key,
-                    base_url="https://api.aimlapi.com/v1",
-                )
-            )
+                    base_url="https://api.aimlapi.com/v1"
+                ))
 
-        # 7. Google Gemini
-        if s.google_project:
-            try:
-                from agno.models.google import Gemini
+            return created
 
-                models.append(Gemini(id=s.google_brain_model))
-            except ImportError:
-                logger.debug("agno.models.google not available")
+        # 1. Add Primary Provider
+        models.extend(create_provider(s.brain_provider))
+
+        # 2. Add Fallbacks (all others except primary)
+        # Define fallback priority order
+        fallback_order = ["groq", "nvidia", "google", "openrouter", "local"]
+        
+        for p_name in fallback_order:
+            if p_name != s.brain_provider:
+                models.extend(create_provider(p_name))
+
+        if not models:
+            # Absolute fallback if everything fails/is missing
+            models.append(Ollama(id="qwen2.5:14b"))
 
         return models
 
@@ -339,6 +330,34 @@ class EntonBrain:
         mid = getattr(self._agent.model, "id", "?")
         logger.info("Brain [%s]: %s", mid, content[:80])
         return content
+
+    async def think_stream(self, prompt: str, *, system: str = "") -> Any:
+        """Stream response token-by-token (or chunk-by-chunk)."""
+        original_instructions = self._agent.instructions
+        if system:
+            self._agent.instructions = [system]
+
+        try:
+            # Only try the primary model for streaming to keep it fast/simple
+            # Fallback logic is harder with streaming (user sees glitch), so we trust the primary.
+            model = self._models[0]
+            mid = getattr(model, "id", "?")
+            self._agent.model = model
+            
+            # Force streaming mode locally
+            resp_stream = await self._agent.arun(prompt, stream=True)
+            
+            logger.info("Brain [%s] streaming started...", mid)
+            async for chunk in resp_stream:
+                if chunk.content:
+                    yield chunk.content
+                    
+        except Exception:
+            logger.exception("Brain streaming failed")
+            yield "Erro no streaming de pensamento."
+        finally:
+            if system:
+                self._agent.instructions = original_instructions
 
     async def think_agent(self, prompt: str, *, system: str = "") -> str:
         """Alias for think() — Agno handles tool calling natively."""

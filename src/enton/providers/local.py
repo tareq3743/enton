@@ -48,28 +48,33 @@ class LocalSTT:
 
 
 class LocalTTS:
-    """Kokoro local TTS fallback."""
+    """Kokoro local TTS fallback (GPU Accelerated)."""
 
     def __init__(self, settings: Settings) -> None:
         self._lang = settings.kokoro_lang
-        self._voice = settings.kokoro_voice
+        self._default_voice = settings.kokoro_voice
         self._pipeline = None
         self.sample_rate: int = 24000
+        # Check for CUDA
+        self._device = "cuda" if torch.cuda.is_available() else "cpu"
 
     def _ensure_pipeline(self):
         if self._pipeline is None:
+            logger.info("Loading Kokoro TTS on %s...", self._device)
             self._pipeline = KPipeline(lang_code=self._lang, repo_id="hexgrad/Kokoro-82M")
             if hasattr(self._pipeline, "model") and self._pipeline.model is not None:
-                self._pipeline.model = self._pipeline.model.to(torch.device("cpu"))
+                self._pipeline.model = self._pipeline.model.to(torch.device(self._device))
         return self._pipeline
 
-    async def synthesize(self, text: str) -> np.ndarray:
+    async def synthesize(self, text: str, voice: str | None = None, speed: float = 1.0) -> np.ndarray:
+        """Synthesize full audio."""
         pipeline = self._ensure_pipeline()
+        voice_to_use = voice or self._default_voice
         loop = asyncio.get_running_loop()
 
         def _synth():
             chunks = []
-            for _, _, audio in pipeline(text, voice=self._voice, speed=1.0):
+            for _, _, audio in pipeline(text, voice=voice_to_use, speed=speed):
                 chunks.append(audio)
             if not chunks:
                 return np.array([], dtype=np.float32)
@@ -77,5 +82,28 @@ class LocalTTS:
 
         return await loop.run_in_executor(None, _synth)
 
-    async def synthesize_stream(self, text: str) -> AsyncIterator[np.ndarray]:
-        yield await self.synthesize(text)
+    async def synthesize_stream(self, text: str, voice: str | None = None, speed: float = 1.0) -> AsyncIterator[np.ndarray]:
+        """Yield audio chunks in real-time."""
+        pipeline = self._ensure_pipeline()
+        voice_to_use = voice or self._default_voice
+        loop = asyncio.get_running_loop()
+        
+        # Generator wrapper to run in thread
+        queue = asyncio.Queue()
+        
+        def _producer():
+            try:
+                for _, _, audio in pipeline(text, voice=voice_to_use, speed=speed):
+                    loop.call_soon_threadsafe(queue.put_nowait, audio)
+                loop.call_soon_threadsafe(queue.put_nowait, None) # Sentinel
+            except Exception as e:
+                logger.error("TTS Stream error: %s", e)
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        loop.run_in_executor(None, _producer)
+
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                break
+            yield chunk

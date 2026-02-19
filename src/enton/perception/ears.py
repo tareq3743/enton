@@ -16,6 +16,7 @@ from enton.core.events import EventBus, TranscriptionEvent
 from enton.providers.google import GoogleSTT
 from enton.providers.local import LocalSTT
 from enton.providers.nvidia import NvidiaSTT
+from enton.providers.groq_stt import GroqSTT
 
 if TYPE_CHECKING:
     from enton.core.config import Settings
@@ -29,6 +30,14 @@ _MIN_PARTIAL_AUDIO = 0.5  # seconds — don't transcribe partials shorter than t
 
 
 class Ears:
+    # Priority order for fallback (Fastest Cloud -> Reliable Cloud -> Local)
+    _FALLBACK_ORDER = [
+        Provider.GROQ,
+        Provider.NVIDIA,
+        Provider.GOOGLE,
+        Provider.LOCAL,
+    ]
+
     def __init__(self, settings: Settings, bus: EventBus, blob_store: object | None = None) -> None:
         self._settings = settings
         self._bus = bus
@@ -47,6 +56,12 @@ class Ears:
         self._muted = value
 
     def _init_providers(self, s: Settings) -> None:
+        if s.groq_api_key:
+            try:
+                self._providers[Provider.GROQ] = GroqSTT(s)
+            except Exception:
+                logger.warning("Groq STT unavailable")
+
         if s.nvidia_api_key:
             try:
                 NvidiaSTT_instance = NvidiaSTT(s)
@@ -68,28 +83,39 @@ class Ears:
             except Exception:
                 logger.warning("Local STT unavailable")
 
-    def _get_provider(self) -> tuple[Provider, STTProvider]:
-        if self._primary in self._providers:
-            return self._primary, self._providers[self._primary]
-        for name, provider in self._providers.items():
-            return name, provider
-        raise RuntimeError("No STT provider available")
-
     async def transcribe(self, audio: np.ndarray) -> str:
-        name, provider = self._get_provider()
-        try:
-            text = await provider.transcribe(audio, self._settings.sample_rate)
-            if text.strip():
-                await self._bus.emit(TranscriptionEvent(text=text, is_final=True))
-                logger.info("Ears [%s]: %s", name, text[:80])
-            return text
-        except Exception:
-            logger.exception("STT [%s] failed", name)
-            if name != Provider.LOCAL and Provider.LOCAL in self._providers:
-                return await self._providers[Provider.LOCAL].transcribe(
-                    audio, self._settings.sample_rate
-                )
-            return ""
+        # 1. Build list of providers to try (Primary -> Fallbacks)
+        candidates = [self._primary] + [
+            p for p in self._FALLBACK_ORDER if p != self._primary
+        ]
+        
+        # 2. Try each provider in sequence
+        for provider_id in candidates:
+            if provider_id not in self._providers:
+                continue
+                
+            provider = self._providers[provider_id]
+            try:
+                # Timeout for cloud providers to fail fast
+                if provider_id != Provider.LOCAL:
+                    text = await asyncio.wait_for(
+                        provider.transcribe(audio, self._settings.sample_rate),
+                        timeout=4.0
+                    )
+                else:
+                    text = await provider.transcribe(audio, self._settings.sample_rate)
+
+                if text and text.strip():
+                    await self._bus.emit(TranscriptionEvent(text=text, is_final=True))
+                    logger.info("Ears [%s]: %s", provider_id, text[:80])
+                    return text
+                    
+            except Exception as e:
+                logger.warning("STT [%s] failed: %s. Trying next...", provider_id, e)
+                continue
+
+        logger.error("All STT providers failed.")
+        return ""
 
     async def _transcribe_partial(self, audio: np.ndarray) -> str:
         """Transcribe partial audio (during speech) — no fallback, fast path."""
@@ -130,6 +156,16 @@ class Ears:
         model, utils = torch.hub.load(
             repo_or_dir="snakers4/silero-vad", model="silero_vad", force_reload=False
         )
+
+        # Audio Device Check
+        try:
+            device_info = sd.query_devices(kind="input")
+            device_name = device_info.get("name", "Unknown")
+            logger.info("Ears initialized on device: %s", device_name)
+            # Log all inputs for debug if needed
+            # logger.debug("Available inputs: %s", sd.query_devices())
+        except Exception:
+            logger.warning("Could not query audio devices")
 
         window_size_samples = 512
         pre_buffer_chunks = 6  # ~200ms of audio before speech trigger
