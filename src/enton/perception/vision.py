@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import TYPE_CHECKING
 
 import cv2
+
+# RTSP cameras that only accept UDP transport (e.g. cheap ONVIF cams)
+os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;udp")
 import numpy as np
 
 from enton.core.events import (
@@ -67,6 +71,10 @@ class CameraFeed:
                     [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000],
                 )
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            # HEVC/H.265 over UDP: drain initial corrupt frames
+            if isinstance(self.source, str) and "rtsp://" in self.source:
+                for _ in range(30):
+                    self.cap.grab()
             if self.cap.isOpened():
                 logger.info("Camera [%s] connected: %s", self.id, self.source)
             else:

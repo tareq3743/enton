@@ -26,6 +26,7 @@ os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
 os.environ["QT_QPA_PLATFORM"] = "xcb"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp"
 
 def silence_c_logs():
     """Silences low-level C library warnings."""
@@ -44,7 +45,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 import cv2
 import numpy as np
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QSize, QRect
-from PySide6.QtGui import QAction, QImage, QKeySequence, QSurfaceFormat, QPainter, QColor, QIcon
+from PySide6.QtGui import QAction, QFont, QImage, QKeySequence, QSurfaceFormat, QPainter, QColor, QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QStatusBar, QGridLayout, QLabel
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from ultralytics import YOLO
@@ -159,7 +160,7 @@ class VisionWorker(QThread):
         
         backend = cv2.CAP_V4L2 if isinstance(self.source, int) else cv2.CAP_FFMPEG
         cap = cv2.VideoCapture(self.source, backend)
-        
+
         if isinstance(self.source, int):
             cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -167,6 +168,10 @@ class VisionWorker(QThread):
             cap.set(cv2.CAP_PROP_FPS, 30)
         else:
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            # RTSP: drain initial HEVC keyframe errors
+            if isinstance(self.source, str) and "rtsp://" in self.source:
+                for _ in range(30):
+                    cap.grab()
 
         while self._running:
             t_start = time.perf_counter()
