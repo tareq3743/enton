@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import timedelta
 
 from enton.core.context_engine import (
     ContextEngine,
@@ -52,21 +53,23 @@ def test_context_entry_not_stale_within_ttl():
     assert entry.is_stale is False
 
 
-def test_context_entry_stale_after_ttl():
+def test_context_entry_stale_after_ttl(freezer):
     """Entries past their TTL are stale."""
+    now = time.time()
     entry = ContextEntry(
         key="k",
         content="x",
         category="system",
         ttl=1.0,
-        timestamp=time.time() - 5.0,
+        timestamp=now - 5.0,
     )
     assert entry.is_stale is True
 
 
-def test_context_entry_age_seconds():
+def test_context_entry_age_seconds(freezer):
     """age_seconds reflects wall-clock time since creation."""
-    past = time.time() - 120.0
+    now = time.time()
+    past = now - 120.0
     entry = ContextEntry(key="k", content="x", category="system", timestamp=past)
     assert entry.age_seconds >= 119.0
 
@@ -159,11 +162,11 @@ def test_engine_remove_missing():
     assert engine.remove("ghost") is False
 
 
-def test_engine_get_stale_returns_none():
+def test_engine_get_stale_returns_none(freezer):
     """get() returns None for stale entries."""
     engine = ContextEngine()
     engine.set("k", "val", ttl=0.01)
-    time.sleep(0.05)
+    freezer.tick(delta=timedelta(seconds=0.1))
     assert engine.get("k") is None
 
 
@@ -263,12 +266,12 @@ def test_assemble_extra_budget():
     assert "b" in result
 
 
-def test_assemble_cleans_stale():
+def test_assemble_cleans_stale(freezer):
     """assemble() removes stale entries before building output."""
     engine = ContextEngine(max_tokens=10000)
     engine.set("fresh", "alive", ttl=60.0)
     engine.set("old", "dead", ttl=0.01)
-    time.sleep(0.05)
+    freezer.tick(delta=timedelta(seconds=0.1))
     result = engine.assemble()
     assert "alive" in result
     assert "dead" not in result
@@ -322,12 +325,12 @@ def test_assemble_by_category_empty():
     assert engine.assemble_by_category() == {}
 
 
-def test_assemble_by_category_cleans_stale():
+def test_assemble_by_category_cleans_stale(freezer):
     """Stale entries are cleaned before grouping."""
     engine = ContextEngine()
     engine.set("stale", "old data", category="sensor", ttl=0.01)
     engine.set("fresh", "new data", category="sensor", ttl=60.0)
-    time.sleep(0.05)
+    freezer.tick(delta=timedelta(seconds=0.1))
     grouped = engine.assemble_by_category()
     assert "old data" not in grouped.get("sensor", "")
     assert "new data" in grouped["sensor"]
@@ -484,12 +487,12 @@ def test_checkpoint_dir_created_automatically(tmp_path):
 # ------------------------------------------------------------------ #
 
 
-def test_cleanup_stale_removes_expired():
+def test_cleanup_stale_removes_expired(freezer):
     """_cleanup_stale removes entries past their TTL."""
     engine = ContextEngine()
     engine.set("ephemeral", "gone", ttl=0.01)
     engine.set("permanent", "stays")
-    time.sleep(0.05)
+    freezer.tick(delta=timedelta(seconds=0.1))
     removed = engine._cleanup_stale()
     assert removed == 1
     assert engine.get("permanent") == "stays"
@@ -505,12 +508,12 @@ def test_cleanup_stale_nothing_to_clean():
     assert removed == 0
 
 
-def test_cleanup_stale_all_expired():
+def test_cleanup_stale_all_expired(freezer):
     """All entries can be stale at once."""
     engine = ContextEngine()
     engine.set("a", "x", ttl=0.01)
     engine.set("b", "y", ttl=0.01)
-    time.sleep(0.05)
+    freezer.tick(delta=timedelta(seconds=0.1))
     removed = engine._cleanup_stale()
     assert removed == 2
     assert len(engine._entries) == 0
@@ -556,12 +559,12 @@ def test_rot_score_increases_with_low_priority():
     assert score > 0.2
 
 
-def test_rot_score_capped_at_one():
+def test_rot_score_capped_at_one(freezer):
     """rot_score never exceeds 1.0."""
     engine = ContextEngine(max_tokens=1)
     for i in range(50):
         engine.set(f"e{i}", "x" * 100, priority=0.0, ttl=0.01)
-    time.sleep(0.05)
+    freezer.tick(delta=timedelta(seconds=0.1))
     assert engine.rot_score() <= 1.0
 
 
@@ -669,12 +672,12 @@ def test_over_budget_all_entries_dropped():
     assert result == ""
 
 
-def test_all_stale_entries():
+def test_all_stale_entries(freezer):
     """Engine with all stale entries behaves like empty after cleanup."""
     engine = ContextEngine(max_tokens=10000)
     engine.set("x", "data1", ttl=0.01)
     engine.set("y", "data2", ttl=0.01)
-    time.sleep(0.05)
+    freezer.tick(delta=timedelta(seconds=0.1))
     result = engine.assemble()
     assert result == ""
     assert engine.current_tokens == 0

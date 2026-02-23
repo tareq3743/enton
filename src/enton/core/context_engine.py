@@ -33,7 +33,7 @@ class ContextEntry:
     content: str
     category: str  # "sensor", "memory", "tool_result", "conversation", "system"
     priority: float = 0.5  # 0.0 = low, 1.0 = critical
-    timestamp: float = field(default_factory=time.time)
+    timestamp: float = field(default_factory=lambda: time.time())
     token_estimate: int = 0
     ttl: float = 0.0  # 0 = no expiry, else seconds until stale
 
