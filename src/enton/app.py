@@ -87,6 +87,7 @@ from enton.skills.knowledge_toolkit import KnowledgeTools
 from enton.skills.memory_toolkit import MemoryTools
 from enton.skills.n8n_toolkit import N8nTools
 from enton.skills.neurosurgeon_toolkit import NeurosurgeonToolkit
+from enton.skills.picoclaw_toolkit import PicoClawTools
 from enton.skills.planner_toolkit import PlannerTools
 from enton.skills.process_toolkit import ProcessTools
 from enton.skills.ptz_toolkit import PTZTools
@@ -211,9 +212,9 @@ class App:
         # v0.9.0 — New hardware-powered toolkits
         from enton.skills.browser_toolkit import BrowserTools
         from enton.skills.desktop_toolkit import DesktopTools
+        from enton.skills.director_toolkit import DirectorTools
         from enton.skills.media_toolkit import MediaTools
         from enton.skills.network_toolkit import NetworkTools
-        from enton.skills.director_toolkit import DirectorTools
 
         toolkits = [
             describe_tools,
@@ -241,6 +242,7 @@ class App:
             BrowserTools(workspace=self._workspace),
             MediaTools(workspace=self._workspace),
             NetworkTools(),
+            PicoClawTools(),
             GodModeToolkit(),
             NeurosurgeonToolkit(),
             CryptoToolkit(),
@@ -611,30 +613,34 @@ class App:
 
         # Metacognitive-wrapped brain call
         trace = self.metacognition.begin_trace(event.text, strategy="agent")
-        
+
         full_response = ""
         sentence_buffer = ""
         # Delimiters: . ? ! : \n (lookbehind to keep delimiter)
         # Using simple check for robustness
         delimiters = (".", "?", "!", ":", "\n")
-        
+
         try:
             # STREAMING PIPELINE: Brain -> Buffer -> Voice
             async for chunk in self.brain.think_stream(event.text, system=system):
-                if not chunk: continue
-                
+                if not chunk:
+                    continue
+
                 sentence_buffer += chunk
                 full_response += chunk
-                
+
                 # Check for sentence end
-                if any(sentence_buffer.endswith(d) or sentence_buffer.endswith(d + " ") for d in delimiters):
+                if any(
+                    sentence_buffer.endswith(d) or sentence_buffer.endswith(d + " ")
+                    for d in delimiters
+                ):
                     # Found a sentence boundary!
                     to_say = sentence_buffer.strip()
-                    if len(to_say) > 2: # Ignore noise
+                    if len(to_say) > 2:  # Ignore noise
                         self._push_thought(f"[brain] {to_say[:60]}...")
                         await self.voice.say(to_say)
                     sentence_buffer = ""
-            
+
             # Flush remaining buffer
             if sentence_buffer.strip():
                 await self.voice.say(sentence_buffer.strip())
@@ -662,7 +668,8 @@ class App:
                 response = await self.brain.think_agent(event.text, system=system)
                 if response:
                     await self.voice.say(response)
-            except: pass
+            except Exception:
+                pass
 
     def _extract_facts(self, text: str) -> None:
         # Simple regex extraction for Phase 1

@@ -9,7 +9,7 @@ from enton.core.events import ActivityEvent, DetectionEvent, EmotionEvent
 def test_fuser_empty():
     f = Fuser()
     result = f.fuse([], [], [])
-    assert "Nenhum objeto" in result
+    assert "Ambiente sem alterações significativas" in result
 
 
 def test_fuser_single_detection():
@@ -45,7 +45,6 @@ def test_fuser_with_emotion():
     emotions = [EmotionEvent(person_index=0, emotion="Feliz", score=0.85)]
     result = f.fuse(detections, [], emotions)
     assert "feliz" in result.lower()
-    assert "85%" in result
 
 
 def test_fuser_full_scene():

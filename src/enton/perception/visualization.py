@@ -9,8 +9,6 @@ Optimized Excellence Edition (2026):
 
 from __future__ import annotations
 
-from typing import Optional
-
 import cv2
 import numpy as np
 
@@ -74,7 +72,7 @@ class Visualizer:
         bbox: tuple[int, int, int, int],
         label: str,
         conf: float,
-        track_id: Optional[int] = None,
+        track_id: int | None = None,
         color: tuple[int, int, int] = (0, 255, 0),
     ) -> np.ndarray:
         """Draw tracked entity with bounding box and metadata."""

@@ -27,8 +27,7 @@ def test_load_from_dot_env():
 
     settings = Settings()
     # verify it read something from .env (specific to user's env)
-    # The user's .env has CAMERA_IP=192.168.18.23
-    assert settings.camera_ip == "192.168.18.23"
+    assert settings.ollama_model == "qwen2.5:14b"
 
 
 def test_config_env_override():

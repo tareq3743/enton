@@ -182,6 +182,7 @@ class TestProcessManagerGet:
         task = pm.get(tid)
         assert task is not None
         assert task.id == tid
+        await task._task
 
     @pytest.mark.asyncio
     async def test_get_nonexistent_task(self, pm):
@@ -220,9 +221,14 @@ class TestProcessManagerOutput:
 class TestProcessManagerListTasks:
     @pytest.mark.asyncio
     async def test_list_all(self, pm):
-        await pm.submit("a", "echo 1")
-        await pm.submit("b", "echo 2")
-        await pm.submit("c", "echo 3")
+        tid1 = await pm.submit("a", "echo 1")
+        tid2 = await pm.submit("b", "echo 2")
+        tid3 = await pm.submit("c", "echo 3")
+
+        await pm.get(tid1)._task
+        await pm.get(tid2)._task
+        await pm.get(tid3)._task
+
         tasks = pm.list_tasks()
         assert len(tasks) == 3
 
@@ -243,16 +249,25 @@ class TestProcessManagerListTasks:
 
     @pytest.mark.asyncio
     async def test_list_with_limit(self, pm):
+        tids = []
         for i in range(5):
-            await pm.submit(f"t{i}", f"echo {i}")
+            tids.append(await pm.submit(f"t{i}", f"echo {i}"))
+
+        for tid in tids:
+            await pm.get(tid)._task
+
         tasks = pm.list_tasks(limit=2)
         assert len(tasks) == 2
 
     @pytest.mark.asyncio
     async def test_list_sorted_most_recent_first(self, pm):
-        await pm.submit("first", "echo 1")
+        tid1 = await pm.submit("first", "echo 1")
         await asyncio.sleep(0.02)
-        await pm.submit("second", "echo 2")
+        tid2 = await pm.submit("second", "echo 2")
+
+        await pm.get(tid1)._task
+        await pm.get(tid2)._task
+
         tasks = pm.list_tasks()
         assert tasks[0].name == "second"
         assert tasks[1].name == "first"
@@ -480,11 +495,11 @@ class TestProcessManagerConcurrency:
         assert pm.active_count <= 2
         for tid in tids:
             task = pm.get(tid)
-            if not task.is_done:
+            if task and not task.is_done:
                 await pm.cancel(tid)
         for tid in tids:
             task = pm.get(tid)
-            if task._task and not task._task.done():
+            if task and task._task and not task._task.done():
                 with contextlib.suppress(asyncio.CancelledError):
                     await task._task
 

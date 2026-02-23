@@ -14,9 +14,9 @@ from enton.core.blob_store import BlobType
 from enton.core.config import Provider
 from enton.core.events import EventBus, TranscriptionEvent
 from enton.providers.google import GoogleSTT
+from enton.providers.groq_stt import GroqSTT
 from enton.providers.local import LocalSTT
 from enton.providers.nvidia import NvidiaSTT
-from enton.providers.groq_stt import GroqSTT
 
 if TYPE_CHECKING:
     from enton.core.config import Settings

@@ -29,19 +29,13 @@ def test_crawler_init():
 @pytest.mark.asyncio()
 async def test_crawl_url():
     kc = KnowledgeCrawler()
-    html = "<html><body><p>Python is great.</p></body></html>"
+    markdown = "Python is great."
 
-    mock_resp = MagicMock()
-    mock_resp.text = html
-    mock_resp.raise_for_status = MagicMock()
+    mock_engine = AsyncMock()
+    mock_engine.crawl = AsyncMock(return_value={"markdown": markdown})
+    kc._engine = mock_engine
 
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.get = AsyncMock(return_value=mock_resp)
-
-    with patch("httpx.AsyncClient", return_value=mock_client):
-        text = await kc.crawl_url("https://example.com")
+    text = await kc.crawl_url("https://example.com")
 
     assert "Python is great" in text
 
@@ -50,13 +44,11 @@ async def test_crawl_url():
 async def test_crawl_url_failure():
     kc = KnowledgeCrawler()
 
-    mock_client = AsyncMock()
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-    mock_client.get = AsyncMock(side_effect=Exception("Network error"))
+    mock_engine = AsyncMock()
+    mock_engine.crawl = AsyncMock(return_value={"error": "Network error"})
+    kc._engine = mock_engine
 
-    with patch("httpx.AsyncClient", return_value=mock_client):
-        text = await kc.crawl_url("https://bad-url.com")
+    text = await kc.crawl_url("https://bad-url.com")
 
     assert text == ""
 

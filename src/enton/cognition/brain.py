@@ -84,56 +84,70 @@ class EntonBrain:
         """Build ordered list of Agno models respecting brain_provider preference."""
         models: list[Model] = []
         logger.info("Initializing brain with provider preference: %s", s.brain_provider)
-        
+
         # Helper to create provider instances
         def create_provider(provider_type: str) -> list[Model]:
             created = []
             p_type = str(provider_type).lower()
-            
+
             if p_type == "local":
                 created.append(Ollama(id=s.ollama_model))
-                
+
             elif p_type == "nvidia":
                 keys = [k.strip() for k in s.nvidia_api_keys.split(",") if k.strip()]
-                if not keys and s.nvidia_api_key: keys = [s.nvidia_api_key]
+                if not keys and s.nvidia_api_key:
+                    keys = [s.nvidia_api_key]
                 if keys:
                     try:
                         from agno.models.nvidia import Nvidia
+
                         for key in keys:
                             created.append(Nvidia(id=s.nvidia_nim_model, api_key=key))
-                    except ImportError: pass
+                    except ImportError:
+                        pass
 
             elif provider_type == "groq" and s.groq_api_key:
                 from agno.models.groq import Groq
+
                 created.append(Groq(id=s.groq_model, api_key=s.groq_api_key))
 
             elif provider_type == "google" and s.google_project:
                 try:
                     from agno.models.google import Gemini
+
                     created.append(Gemini(id=s.google_brain_model))
-                except ImportError: pass
-                
+                except ImportError:
+                    pass
+
             elif provider_type == "openrouter" and s.openrouter_api_key:
                 try:
                     from agno.models.openrouter import OpenRouter
+
                     created.append(OpenRouter(id=s.openrouter_model, api_key=s.openrouter_api_key))
-                except ImportError: pass
+                except ImportError:
+                    pass
 
             elif provider_type == "huggingface" and s.huggingface_token:
                 from agno.models.openai.like import OpenAILike
-                created.append(OpenAILike(
-                    id=s.huggingface_model, 
-                    api_key=s.huggingface_token,
-                    base_url="https://api-inference.huggingface.co/v1"
-                ))
-                
+
+                created.append(
+                    OpenAILike(
+                        id=s.huggingface_model,
+                        api_key=s.huggingface_token,
+                        base_url="https://api-inference.huggingface.co/v1",
+                    )
+                )
+
             elif provider_type == "aimlapi" and s.aimlapi_api_key:
                 from agno.models.openai.like import OpenAILike
-                created.append(OpenAILike(
-                    id=s.aimlapi_model,
-                    api_key=s.aimlapi_api_key,
-                    base_url="https://api.aimlapi.com/v1"
-                ))
+
+                created.append(
+                    OpenAILike(
+                        id=s.aimlapi_model,
+                        api_key=s.aimlapi_api_key,
+                        base_url="https://api.aimlapi.com/v1",
+                    )
+                )
 
             return created
 
@@ -143,7 +157,7 @@ class EntonBrain:
         # 2. Add Fallbacks (all others except primary)
         # Define fallback priority order
         fallback_order = ["groq", "nvidia", "google", "openrouter", "local"]
-        
+
         for p_name in fallback_order:
             if p_name != s.brain_provider:
                 models.extend(create_provider(p_name))
@@ -343,15 +357,18 @@ class EntonBrain:
             model = self._models[0]
             mid = getattr(model, "id", "?")
             self._agent.model = model
-            
+
             # Force streaming mode locally
-            resp_stream = await self._agent.arun(prompt, stream=True)
-            
+            # In Agno 2.x, arun with stream=True might be sync or async depending on the provider.
+            # The error "async_generator can't be used in 'await' expression" means
+            # it already returned the generator.
+            resp_stream = self._agent.arun(prompt, stream=True)
+
             logger.info("Brain [%s] streaming started...", mid)
             async for chunk in resp_stream:
                 if chunk.content:
                     yield chunk.content
-                    
+
         except Exception:
             logger.exception("Brain streaming failed")
             yield "Erro no streaming de pensamento."
