@@ -60,7 +60,13 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["ruff>=0.9", "pytest>=8.0", "pytest-asyncio>=0.25", "mypy>=1.0"]
+dev = [
+    "ruff>=0.9",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.25",
+    "pytest-freezer>=0.4.9",
+    "mypy>=1.0",
+]
 
 [project.scripts]
 enton = "enton.__main__:main"
